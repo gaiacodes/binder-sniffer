@@ -1,0 +1,36 @@
+# Build artifacts
+build/
+**/build/
+*.o
+*.a
+*.so
+*.dex
+*.apk
+*.idsig
+
+# Spike / compiled binaries
+spike/verify_offsets
+tools/**/*.bin.out
+
+# Gradle
+.gradle/
+testapp/.gradle/
+testapp/local.properties
+testapp/app/release/
+
+# Emulator / logs
+*.log
+emulator.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# macOS
+.DS_Store
+
+# Keep test fixtures (raw captured transaction blobs) tracked
+!tests/fixtures/
