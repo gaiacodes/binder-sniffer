@@ -1,13 +1,17 @@
 # binder-sniffer build
 #
-# Three outputs:
-#   make test     -> build/host_decode   host binary, runs the decoder offline
-#   make sniffer  -> build/sniffer        arm64 binary (NDK), ptrace capture
-#   make deploy   -> adb push the sniffer to the device
+# Architecture: a pure-C decoder core (decoder/) linked into two things:
+#   - a host test harness  (runs on your Mac, decodes a saved fixture)
+#   - the hook library     (runs inside the target app, feeds the decoder live)
+# plus a standalone injector that loads the hook into a running app.
 #
-# The decoder sources are shared by both the host test and the sniffer.
+#   make test      -> build/host_decode    host binary, decode a fixture offline
+#   make hook      -> build/libbshook.so   arm64, injected into the app
+#   make injector  -> build/injector       arm64, runtime .so injector
+#   make deploy    -> adb push hook + injector to the device
+#   make clean
 
-BUILD      := build
+BUILD       := build
 DECODER_SRC := $(wildcard decoder/src/*.c)
 INCLUDES    := -Idecoder/include
 CFLAGS      := -Wall -Wextra -O2 -std=c11 $(INCLUDES)
@@ -16,36 +20,48 @@ CFLAGS      := -Wall -Wextra -O2 -std=c11 $(INCLUDES)
 HOST_CC   ?= cc
 HOST_BIN  := $(BUILD)/host_decode
 
-# ---- Android sniffer (emulator) -------------------------------------------
-# Override NDK / API / ABI as needed for your install.
+# ---- Android targets (emulator), NDK cross-build --------------------------
+# Override NDK / API as needed for your install.
 NDK       ?= $(HOME)/Library/Android/sdk/ndk/29.0.13599879
 API       ?= 33
 TC        := $(NDK)/toolchains/llvm/prebuilt/darwin-x86_64
 NDK_CC    := $(TC)/bin/aarch64-linux-android$(API)-clang
-SNIFF_BIN := $(BUILD)/sniffer
+
+HOOK_BIN  := $(BUILD)/libbshook.so
+INJ_BIN   := $(BUILD)/injector
 
 # adb (SDK platform-tools)
 ADB       ?= $(HOME)/Library/Android/sdk/platform-tools/adb
 DEVDIR    ?= /data/local/tmp
 
-.PHONY: all test sniffer deploy clean
+.PHONY: all test hook injector deploy clean
 
-all: test sniffer
+all: test hook injector
 
+# --- host offline decode ---
 test: $(HOST_BIN)
 	@echo "run: $(HOST_BIN) tests/fixtures/<capture>.bin"
 
 $(HOST_BIN): $(DECODER_SRC) tests/host_decode.c | $(BUILD)
 	$(HOST_CC) $(CFLAGS) $^ -o $@
 
-sniffer: $(SNIFF_BIN)
+# --- in-app hook library (decoder linked in) ---
+hook: $(HOOK_BIN)
 
-$(SNIFF_BIN): $(DECODER_SRC) sniffer/sniffer.c | $(BUILD)
+$(HOOK_BIN): $(DECODER_SRC) hook/bshook.c | $(BUILD)
+	$(NDK_CC) $(CFLAGS) -shared -fPIC $^ -o $@ -llog
+
+# --- runtime injector ---
+injector: $(INJ_BIN)
+
+$(INJ_BIN): injector/injector.c | $(BUILD)
 	$(NDK_CC) $(CFLAGS) $^ -o $@
 
-deploy: $(SNIFF_BIN)
-	$(ADB) push $(SNIFF_BIN) $(DEVDIR)/sniffer
-	$(ADB) shell chmod 755 $(DEVDIR)/sniffer
+# --- push both to the device ---
+deploy: $(HOOK_BIN) $(INJ_BIN)
+	$(ADB) push $(HOOK_BIN) $(DEVDIR)/libbshook.so
+	$(ADB) push $(INJ_BIN)  $(DEVDIR)/injector
+	$(ADB) shell chmod 755 $(DEVDIR)/injector $(DEVDIR)/libbshook.so
 
 $(BUILD):
 	mkdir -p $(BUILD)
