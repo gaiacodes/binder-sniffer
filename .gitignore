@@ -8,10 +8,6 @@ build/
 *.apk
 *.idsig
 
-# Spike / compiled binaries
-spike/verify_offsets
-tools/**/*.bin.out
-
 # Gradle
 .gradle/
 testapp/.gradle/
