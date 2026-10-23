@@ -1,16 +1,9 @@
 #include "capture.h"
+#include "bs_decoder.h"  // bs_decode_enqueue, bs_notif
 
-#include <fcntl.h>       // open, O_WRONLY/O_CREAT/O_TRUNC
-#include <unistd.h>      // write, close
 #include <stdint.h>      // uint32_t, uint8_t, uintptr_t
-#include <stdio.h>       // snprintf
 #include <string.h>      // strlen
-#include <errno.h>       // errno
 #include <android/log.h> // __android_log_print
-
-// The app's own data dir — the app can write here (unlike /data/local/tmp,
-// which belongs to shell and is denied to the app uid).
-#define CAP_DIR "/data/data/com.bindersniffer.testapp"
 
 // The interface we care about. Its descriptor sits near the start of the
 // transaction's Parcel, stored as UTF-16LE.
@@ -38,27 +31,26 @@ static int is_notification(const uint8_t *parcel, size_t len) {
     return contains_utf16(parcel, scan, WANT_IFACE);
 }
 
-// Write one transaction's Parcel payload to a file. The payload bytes live
-// behind data.ptr.buffer, not inline in the command stream, so we follow it.
-static void dump_transaction(const struct binder_transaction_data *btd) {
-    static int seq = 0;
-    int n = __sync_fetch_and_add(&seq, 1);   // atomic: binder threads run concurrently
+// Decode one transaction's Parcel in place and log the notification text. The
+// payload bytes live behind data.ptr.buffer, not inline in the command stream,
+// so we follow it; it's in our own address space, valid for this ioctl call.
+// The decoder is read-only and stateless, so this is safe on the binder thread.
+static void log_notification(const struct binder_transaction_data *btd) {
+    const uint8_t *parcel = (const uint8_t *)btd->data.ptr.buffer;
+    size_t len = (size_t)btd->data_size;
 
-    char path[160];
-    snprintf(path, sizeof(path), CAP_DIR "/notif_code%u_%d.bin", btd->code, n);
-
-    int out = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (out < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, "HOOK",
-            "capture open failed errno=%d path=%s", errno, path);
+    bs_notif n;
+    if (bs_decode_enqueue(parcel, len, &n) != 0) {
+        __android_log_print(ANDROID_LOG_WARN, "binder-sniffer",
+            "decode failed code=%u size=%zu", btd->code, len);
         return;
     }
-    ssize_t w = write(out, (const void *)btd->data.ptr.buffer,
-                      (size_t)btd->data_size);
-    close(out);
-    __android_log_print(ANDROID_LOG_INFO, "HOOK",
-        "captured notification code=%u wrote=%zd/%zu -> %s",
-        btd->code, w, (size_t)btd->data_size, path);
+
+    __android_log_print(ANDROID_LOG_INFO, "binder-sniffer",
+        "pkg=%s title=\"%s\" text=\"%s\"",
+        n.pkg,
+        n.have_title ? n.title : "(none)",
+        n.have_text  ? n.text  : "(none)");
 }
 
 void bs_capture_bwr(const struct binder_write_read *bwr) {
@@ -77,7 +69,7 @@ void bs_capture_bwr(const struct binder_write_read *bwr) {
                 (const struct binder_transaction_data *)(base + off);
             if (is_notification((const uint8_t *)btd->data.ptr.buffer,
                                  (size_t)btd->data_size)) {
-                dump_transaction(btd);
+                log_notification(btd);
             }
         }
         off += payload;
