@@ -1,0 +1,27 @@
+// Indexing-only module: it exists so Android Studio resolves the NDK headers
+// and autocompletes the native C (hook / injector / decoder) via CMake. It does
+// NOT build the app — :app is independent. The real native build is the
+// top-level Makefile; this just points Gradle's CMake at the same sources.
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.bindersniffer.nativeindex'
+    compileSdk 34
+    ndkVersion '29.0.13599879'
+
+    defaultConfig {
+        minSdk 26
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("../CMakeLists.txt")
+            version '3.22.1'
+        }
+    }
+}

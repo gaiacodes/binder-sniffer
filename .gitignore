@@ -10,9 +10,12 @@ build/
 
 # Gradle
 .gradle/
-testapp/.gradle/
-testapp/local.properties
-testapp/app/release/
+local.properties
+**/release/
+
+# CMake / IDE indexing (machine-specific, generated)
+.cxx/
+compile_commands.json
 
 # Emulator / logs
 *.log

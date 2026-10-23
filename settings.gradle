@@ -12,5 +12,7 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "BinderSnifferTestApp"
+rootProject.name = "binder-sniffer"
 include ":app"
+project(":app").projectDir = file("testapp/app")
+include ":native"
