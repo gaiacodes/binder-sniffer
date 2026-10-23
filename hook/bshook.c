@@ -49,6 +49,23 @@ static void bshook_init(void) {
             string_blob_addr = (const char *)(libbinder_info.dlpi_addr + dynamic[i].d_un.d_ptr);
         }
     }
+    void **got_slot = NULL;
+
+    for (int i = 0; i < relocation_table_size / sizeof(Elf64_Rela); i++) {
+        Elf64_Rela relocation = relocation_table_addr[i];
+        Elf64_Xword sym_index = ELF64_R_SYM(relocation.r_info);
+        const char *name = string_blob_addr + symbol_table_addr[sym_index].st_name;
+        if (strcmp(name, "ioctl") == 0) {
+            got_slot = (void **)(libbinder_info.dlpi_addr + relocation.r_offset);
+            break;
+        }
+    }
+    if (got_slot == NULL) {
+        __android_log_print(ANDROID_LOG_ERROR, "HOOK", "no ioctl got slot found");
+        return;
+    }
+    __android_log_print(ANDROID_LOG_INFO, "HOOK", "ioctl got_slot=%p  *got_slot=%p",
+                        (void *)got_slot, *got_slot);
 }
 
 
