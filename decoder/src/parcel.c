@@ -42,7 +42,8 @@ int bs_read_string16(bs_parcel *p, char *out, size_t outcap) {
     if (p->error) return 1;
     if (len < 0) { if (outcap) out[0] = 0; return 0; }
     // On the wire: len code units followed by a null terminator, padded to 4.
-    if (!ensure(p, (size_t)(len + 1) * 2)) return 1;
+    size_t nbytes = (size_t)(len + 1) * 2;   // len code units + null terminator
+    if (!ensure(p, nbytes)) return 1;
     size_t o = 0;
     for (int32_t i = 0; i < len; i++) {
         uint16_t c;
@@ -50,7 +51,7 @@ int bs_read_string16(bs_parcel *p, char *out, size_t outcap) {
         if (o + 1 < outcap) out[o++] = (c < 0x80) ? (char)c : '?';
     }
     if (outcap) out[o] = 0;
-    p->pos += (size_t)(len + 1) * 2;       // consume chars + null terminator
+    p->pos += nbytes;                      // consume chars + null terminator
     bs_align4(p);
     return 0;
 }

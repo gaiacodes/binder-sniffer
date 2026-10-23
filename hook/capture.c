@@ -9,6 +9,10 @@
 // transaction's Parcel, stored as UTF-16LE.
 #define WANT_IFACE "android.app.INotificationManager"
 
+// A binder command code carries its payload size in bits 16..29 (the ioctl
+// _IOC_SIZE field), so we can step over each command without a size table.
+#define BC_PAYLOAD_SIZE(cmd) (((cmd) >> 16) & 0x3FFF)
+
 // True if `buf` contains the ASCII string `s` encoded as UTF-16LE (each char
 // as low byte + 0x00). Used to spot the interface token without a full parse.
 static int contains_utf16(const uint8_t *buf, size_t len, const char *s) {
@@ -35,10 +39,8 @@ static int is_notification(const uint8_t *parcel, size_t len) {
 // payload bytes live behind data.ptr.buffer, not inline in the command stream,
 // so we follow it; it's in our own address space, valid for this ioctl call.
 // The decoder is read-only and stateless, so this is safe on the binder thread.
-static void log_notification(const struct binder_transaction_data *btd) {
-    const uint8_t *parcel = (const uint8_t *)btd->data.ptr.buffer;
-    size_t len = (size_t)btd->data_size;
-
+static void log_notification(const struct binder_transaction_data *btd,
+                             const uint8_t *parcel, size_t len) {
     bs_notif n;
     if (bs_decode_enqueue(parcel, len, &n) != 0) {
         __android_log_print(ANDROID_LOG_WARN, "binder-sniffer",
@@ -55,21 +57,22 @@ static void log_notification(const struct binder_transaction_data *btd) {
 
 void bs_capture_bwr(const struct binder_write_read *bwr) {
     // Walk the command stream. Each command is a u32 code whose payload size is
-    // encoded in the code itself (_IOC_SIZE = bits 16..29), so we can step from
-    // one command to the next without a per-command size table. For each
-    // transaction, dump it only if it targets INotificationManager.
+    // encoded in the code itself, so we can step from one command to the next
+    // without a per-command size table. For each transaction, decode and log it
+    // only if it targets INotificationManager.
     uintptr_t base = (uintptr_t)bwr->write_buffer;
     size_t off = 0;
     while (off + 4 <= (size_t)bwr->write_size) {
         uint32_t cmd = *(uint32_t *)(base + off);
-        uint32_t payload = (cmd >> 16) & 0x3FFF;   // _IOC_SIZE
+        uint32_t payload = BC_PAYLOAD_SIZE(cmd);
         off += 4;
         if (cmd == BC_TRANSACTION || cmd == BC_TRANSACTION_SG) {
             const struct binder_transaction_data *btd =
                 (const struct binder_transaction_data *)(base + off);
-            if (is_notification((const uint8_t *)btd->data.ptr.buffer,
-                                 (size_t)btd->data_size)) {
-                log_notification(btd);
+            const uint8_t *parcel = (const uint8_t *)btd->data.ptr.buffer;
+            size_t len = (size_t)btd->data_size;
+            if (is_notification(parcel, len)) {
+                log_notification(btd, parcel, len);
             }
         }
         off += payload;
