@@ -3,14 +3,22 @@
 #include <sys/mman.h>    // mprotect, PROT_*
 #include <unistd.h>      // sysconf, _SC_PAGESIZE
 #include <string.h>      // strstr, strcmp
-#include <stdint.h>      // uintptr_t
+#include <stdint.h>      // uintptr_t, uint32_t
+#include <linux/android/binder.h> // binder_write_read, BINDER_WRITE_READ
 #include <android/log.h> // __android_log_print
+
+#include "capture.h"     // bs_capture_bwr (throwaway fixture capture)
 
 typedef int (*ioctl_fn)(int, unsigned long, ...);
 static ioctl_fn real_ioctl = NULL;
 
 static int my_ioctl(int fd, unsigned long request, void *arg) {
-    __android_log_print(ANDROID_LOG_INFO, "HOOK", "ioctl intercepted fd=%d req=0x%lx", fd, request);
+    // BINDER_WRITE_READ carries transactions; hand its write buffer to the
+    // (throwaway) capture tool, then always forward to the real ioctl so
+    // binder keeps working.
+    if (request == BINDER_WRITE_READ && arg) {
+        bs_capture_bwr((const struct binder_write_read *)arg);
+    }
     return real_ioctl(fd, request, arg);
 }
 

@@ -13,6 +13,7 @@
 
 BUILD       := build
 DECODER_SRC := $(wildcard decoder/src/*.c)
+HOOK_SRC    := $(wildcard hook/*.c)
 INCLUDES    := -Idecoder/include
 CFLAGS      := -Wall -Wextra -O2 -std=c11 $(INCLUDES)
 
@@ -48,7 +49,7 @@ $(HOST_BIN): $(DECODER_SRC) tests/host_decode.c | $(BUILD)
 # --- in-app hook library (decoder linked in) ---
 hook: $(HOOK_BIN)
 
-$(HOOK_BIN): $(DECODER_SRC) hook/bshook.c | $(BUILD)
+$(HOOK_BIN): $(DECODER_SRC) $(HOOK_SRC) | $(BUILD)
 	$(NDK_CC) $(CFLAGS) -shared -fPIC $^ -o $@ -llog
 
 # --- runtime injector ---
