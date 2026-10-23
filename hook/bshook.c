@@ -16,9 +16,20 @@ static int my_callback(struct dl_phdr_info *info, size_t size, void *data) {
 }
 __attribute__((constructor))
 static void bshook_init(void) {
-    struct dl_phdr_info libbinder = {0};
+    struct dl_phdr_info libbinder_info = {0};
     __android_log_print(ANDROID_LOG_INFO, "HOOK", "loaded");
-    dl_iterate_phdr(my_callback, &libbinder);
+    dl_iterate_phdr(my_callback, &libbinder_info);
+    unsigned long long dynamic = 0;
+    for (int i=0; i < libbinder_info.dlpi_phnum; i++) {
+        const Elf64_Phdr * ph = &libbinder_info.dlpi_phdr[i];
+        if (ph->p_type == PT_DYNAMIC) {
+            dynamic = libbinder_info.dlpi_addr + ph->p_vaddr;
+        }
+    }
+    if (dynamic == 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "HOOK", "no PT_DYNAMIC found");
+        return;
+    }
 }
 
 
