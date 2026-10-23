@@ -6,6 +6,13 @@
 #include <stdint.h>      // uintptr_t
 #include <android/log.h> // __android_log_print
 
+typedef int (*ioctl_fn)(int, unsigned long, ...);
+static ioctl_fn real_ioctl = NULL;
+
+static int my_ioctl(int fd, unsigned long request, void *arg) {
+    __android_log_print(ANDROID_LOG_INFO, "HOOK", "ioctl intercepted fd=%d req=0x%lx", fd, request);
+    return real_ioctl(fd, request, arg);
+}
 
 static int my_callback(struct dl_phdr_info *info, size_t size, void *data) {
     if (strstr(info->dlpi_name, "libbinder.so")) {
@@ -75,6 +82,8 @@ static void bshook_init(void) {
         return;
     }
     __android_log_print(ANDROID_LOG_INFO, "HOOK", "got_slot page now writable");
+    real_ioctl = (ioctl_fn) *got_slot;
+    *got_slot = &(my_ioctl);
 }
 
 
