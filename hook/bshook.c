@@ -3,6 +3,7 @@
 #include <sys/mman.h>    // mprotect, PROT_*
 #include <unistd.h>      // sysconf, _SC_PAGESIZE
 #include <string.h>      // strstr, strcmp
+#include <stdint.h>      // uintptr_t
 #include <android/log.h> // __android_log_print
 
 
@@ -66,6 +67,14 @@ static void bshook_init(void) {
     }
     __android_log_print(ANDROID_LOG_INFO, "HOOK", "ioctl got_slot=%p  *got_slot=%p",
                         (void *)got_slot, *got_slot);
+
+    size_t pagesize = sysconf(_SC_PAGESIZE);
+    uintptr_t page_start = (uintptr_t)got_slot & ~((uintptr_t)pagesize - 1);
+    if (mprotect((void *)page_start, pagesize, PROT_READ | PROT_WRITE) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "HOOK", "mprotect failed");
+        return;
+    }
+    __android_log_print(ANDROID_LOG_INFO, "HOOK", "got_slot page now writable");
 }
 
 
