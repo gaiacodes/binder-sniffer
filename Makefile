@@ -4,7 +4,8 @@
 #   - a host test harness  (runs on your Mac, decodes a saved fixture)
 #   - the hook library     (runs inside the target app, feeds the decoder live)
 #
-#   make test   -> build/host_decode    host binary, decode a fixture offline
+#   make test   -> build/host_decode    host binary; decode fixtures and
+#                                        verify them against golden output
 #   make hook   -> build/libbshook.so   arm64, injected into the app
 #   make clean
 #
@@ -34,9 +35,9 @@ HOOK_BIN  := $(BUILD)/libbshook.so
 
 all: test hook
 
-# --- host offline decode ---
+# --- host offline decode + golden-output check ---
 test: $(HOST_BIN)
-	@echo "run: $(HOST_BIN) tests/fixtures/<capture>.bin"
+	@tests/run.sh $(HOST_BIN)
 
 $(HOST_BIN): $(DECODER_SRC) tests/host_decode.c | $(BUILD)
 	$(HOST_CC) $(CFLAGS) $^ -o $@
