@@ -55,6 +55,12 @@ int bs_read_interface_token(bs_parcel *p, char *out, size_t outcap);
 // String/CharSequence value that follows it into `out`. 0 on success.
 int bs_bundle_get_charseq(const bs_parcel *whole, const char *key,
                           char *out, size_t outcap);
+// Decodes the String/CharSequence value stored after a key whose CHARS begin
+// at byte offset `key_chars` (the key is `keylen` ASCII chars). Lets a caller
+// that already located the key (e.g. in a single multi-key pass) skip the
+// search. 0 on success.
+int bs_bundle_value_at(const bs_parcel *whole, size_t key_chars, size_t keylen,
+                       char *out, size_t outcap);
 
 // --- svc_notification.c : the showcase decode ------------------------------
 // Decodes a captured enqueueNotificationWithTag Parcel payload. 0 on success.
