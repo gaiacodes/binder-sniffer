@@ -15,6 +15,9 @@ jobs:
       - name: Build and run the golden-output test
         run: make test
 
+      - name: Run sanitizer-checked unit tests (ASan + UBSan)
+        run: make unit
+
       - name: Compiler warnings must stay clean
         run: |
           # The build already uses -Wall -Wextra; fail the job if any warning
