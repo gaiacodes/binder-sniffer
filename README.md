@@ -116,6 +116,13 @@ Expected output once a notification is posted by the hooked process:
 binder-sniffer: pkg=com.bindersniffer.testapp title="Binder Sniffer" text="hello from testapp"
 ```
 
+> **On the load path:** this flow was verified end-to-end loading the `.so` from
+> `/data/local/tmp` on the permissive lab emulator (rooted, `setenforce 0`, API 33
+> `google_apis` image), where the app's linker namespace permits it and `dlopen`
+> returns a live handle. On a device with a stricter app namespace that `dlopen`
+> can return 0 (fail); there the `.so` must live somewhere the target permits —
+> see [Environment notes](#environment-notes) for the `/system/lib64` fallback.
+
 ## Environment notes
 
 - Emulator must run with `-gpu host` on Apple Silicon.
