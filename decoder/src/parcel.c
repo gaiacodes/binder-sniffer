@@ -42,7 +42,9 @@ int bs_read_string16(bs_parcel *p, char *out, size_t outcap) {
     if (p->error) return 1;
     if (len < 0) { if (outcap) out[0] = 0; return 0; }
     // On the wire: len code units followed by a null terminator, padded to 4.
-    size_t nbytes = (size_t)(len + 1) * 2;   // len code units + null terminator
+    // Compute the byte count in size_t: `len + 1` in int would be signed
+    // overflow (UB) for a malformed length near INT32_MAX.
+    size_t nbytes = ((size_t)(uint32_t)len + 1) * 2;
     if (!ensure(p, nbytes)) return 1;
     size_t o = 0;
     for (int32_t i = 0; i < len; i++) {
@@ -59,6 +61,8 @@ int bs_read_string16(bs_parcel *p, char *out, size_t outcap) {
 void bs_skip_string16(bs_parcel *p) {
     int32_t len = bs_read_i32(p);
     if (p->error || len < 0) return;
-    p->pos += (size_t)(len + 1) * 2;
+    size_t nbytes = ((size_t)(uint32_t)len + 1) * 2;
+    if (!ensure(p, nbytes)) return;   // latch error if the string runs past the buffer
+    p->pos += nbytes;
     bs_align4(p);
 }
