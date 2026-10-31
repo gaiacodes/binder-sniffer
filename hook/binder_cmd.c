@@ -9,12 +9,17 @@
 void bs_walk_bc_stream(const struct binder_write_read *bwr,
                        bs_txn_fn cb, void *user) {
     uintptr_t base = (uintptr_t)bwr->write_buffer;
+    size_t size = (size_t)bwr->write_size;
     size_t off = 0;
-    while (off + 4 <= (size_t)bwr->write_size) {
+    while (off + 4 <= size) {
         uint32_t cmd = *(uint32_t *)(base + off);
         uint32_t payload = BC_PAYLOAD_SIZE(cmd);
         off += 4;
         if (cmd == BC_TRANSACTION || cmd == BC_TRANSACTION_SG) {
+            // Only read/hand out the transaction struct if it lies fully within
+            // the write buffer; a truncated stream must not cause an OOB read on
+            // the live binder thread.
+            if (off + sizeof(struct binder_transaction_data) > size) break;
             const struct binder_transaction_data *btd =
                 (const struct binder_transaction_data *)(base + off);
             cb(btd, user);
