@@ -35,8 +35,9 @@ INJ_BIN   := $(BUILD)/injector
 # adb (SDK platform-tools)
 ADB       ?= $(HOME)/Library/Android/sdk/platform-tools/adb
 DEVDIR    ?= /data/local/tmp
+PKG       ?= com.bindersniffer.testapp
 
-.PHONY: all test hook injector deploy clean
+.PHONY: all test hook injector deploy inject clean
 
 all: test hook injector
 
@@ -64,6 +65,14 @@ deploy: $(HOOK_BIN) $(INJ_BIN)
 	$(ADB) push $(HOOK_BIN) $(DEVDIR)/libbshook.so
 	$(ADB) push $(INJ_BIN)  $(DEVDIR)/injector
 	$(ADB) shell chmod 755 $(DEVDIR)/injector $(DEVDIR)/libbshook.so
+
+# --- deploy, then inject the hook into the running test app (root) ---
+# Override PKG to target a different running app.
+inject: deploy
+	@PID=$$($(ADB) shell pidof $(PKG) | tr -d '\r'); \
+	 if [ -z "$$PID" ]; then echo "inject: $(PKG) is not running; launch it first"; exit 1; fi; \
+	 echo "injecting into $(PKG) (pid $$PID)"; \
+	 $(ADB) shell "su 0 $(DEVDIR)/injector $$PID $(DEVDIR)/libbshook.so"
 
 $(BUILD):
 	mkdir -p $(BUILD)
