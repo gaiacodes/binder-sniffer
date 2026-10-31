@@ -1,0 +1,4 @@
+interface : android.app.INotificationManager
+package   : com.bindersniffer.testapp
+title     : Binder Sniffer
+text      : hello from testapp
