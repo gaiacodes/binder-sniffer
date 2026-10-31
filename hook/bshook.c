@@ -75,6 +75,12 @@ static void bshook_init(void) {
             string_blob_addr = (const char *)(libbinder_info.dlpi_addr + dynamic[i].d_un.d_ptr);
         }
     }
+    if (relocation_table_addr == NULL || symbol_table_addr == NULL ||
+        string_blob_addr == NULL) {
+        __android_log_print(ANDROID_LOG_ERROR, "binder-sniffer",
+            "missing DT_JMPREL/DT_SYMTAB/DT_STRTAB; cannot scan GOT");
+        return;
+    }
     void **got_slot = NULL;
 
     for (size_t i = 0; i < relocation_table_size / sizeof(Elf64_Rela); i++) {
