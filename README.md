@@ -86,12 +86,14 @@ other transaction is header-decoded (interface token, code, sizes) and hex-dumpe
 # Decodes every fixture and diffs it against its golden output.
 make test
 
-# Cross-compile the hook + injector for the emulator (needs the NDK).
-make hook injector
+# Build everything (host test + arm64 hook + arm64 injector; needs the NDK).
+make all
 ```
 
 Override `NDK` / `API` in the `Makefile` for your install. CI runs `make test`
-on every push (see `.github/workflows/ci.yml`).
+on every push (see `.github/workflows/ci.yml`). To put the hook + injector on a
+device, `make deploy` (below) builds and pushes them in one step — no separate
+build needed first.
 
 ## Loading the hook
 
