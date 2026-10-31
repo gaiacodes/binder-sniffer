@@ -26,13 +26,29 @@ int bs_decode_enqueue(const uint8_t *buf, size_t len, bs_notif *out) {
     if (p.error) return 1;
     // The Notification parcelable + userId follow; we don't walk them here.
 
-    // 3. title/text from the extras Bundle (keyed lookup over the payload)
+    // 3. title/text from the extras Bundle. Both keys are found in a single
+    // pass over the payload (this runs on the binder hot path), then each
+    // value is decoded from its recorded offset.
     bs_parcel whole;
     bs_parcel_init(&whole, buf, len);
-    out->have_title = (bs_bundle_get_charseq(&whole, "android.title",
-                       out->title, sizeof(out->title)) == 0);
-    out->have_text  = (bs_bundle_get_charseq(&whole, "android.text",
-                       out->text, sizeof(out->text)) == 0);
+
+    const char *keys[2] = { "android.title", "android.text" };
+    long off[2] = { -1, -1 };
+    size_t remaining = 2;
+    for (size_t i = 0; i < len && remaining; i++) {
+        for (int k = 0; k < 2; k++) {
+            if (off[k] < 0 && bs_match_utf16_at(buf, len, i, keys[k], 1)) {
+                off[k] = (long)i;
+                remaining--;
+            }
+        }
+    }
+    if (off[0] >= 0)
+        out->have_title = (bs_bundle_value_at(&whole, (size_t)off[0], strlen(keys[0]),
+                           out->title, sizeof(out->title)) == 0);
+    if (off[1] >= 0)
+        out->have_text  = (bs_bundle_value_at(&whole, (size_t)off[1], strlen(keys[1]),
+                           out->text, sizeof(out->text)) == 0);
 
     return 0;
 }
