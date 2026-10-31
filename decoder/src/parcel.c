@@ -66,3 +66,26 @@ void bs_skip_string16(bs_parcel *p) {
     p->pos += nbytes;
     bs_align4(p);
 }
+
+int bs_match_utf16_at(const uint8_t *buf, size_t len, size_t pos,
+                      const char *needle, int require_terminator) {
+    size_t n = strlen(needle);
+    size_t need = n * 2 + (require_terminator ? 2u : 0u);
+    if (pos > len || need > len - pos) return 0;   // overflow-safe bounds check
+    for (size_t j = 0; j < n; j++) {
+        if (buf[pos + j * 2] != (uint8_t)needle[j] || buf[pos + j * 2 + 1] != 0)
+            return 0;
+    }
+    if (require_terminator && (buf[pos + n * 2] != 0 || buf[pos + n * 2 + 1] != 0))
+        return 0;
+    return 1;
+}
+
+long bs_find_utf16(const uint8_t *buf, size_t len, const char *needle,
+                   int require_terminator) {
+    for (size_t i = 0; i < len; i++) {
+        if (bs_match_utf16_at(buf, len, i, needle, require_terminator))
+            return (long)i;
+    }
+    return -1;
+}

@@ -10,26 +10,13 @@
 // transaction's Parcel, stored as UTF-16LE.
 #define WANT_IFACE "android.app.INotificationManager"
 
-// True if `buf` contains the ASCII string `s` encoded as UTF-16LE (each char
-// as low byte + 0x00). Used to spot the interface token without a full parse.
-static int contains_utf16(const uint8_t *buf, size_t len, const char *s) {
-    size_t slen = strlen(s);
-    if (len < slen * 2) return 0;
-    for (size_t i = 0; i + slen * 2 <= len; i++) {
-        size_t j = 0;
-        while (j < slen && buf[i + j * 2] == (uint8_t)s[j] && buf[i + j * 2 + 1] == 0)
-            j++;
-        if (j == slen) return 1;
-    }
-    return 0;
-}
-
 // Does this transaction's Parcel target INotificationManager? The descriptor is
-// right after the small header, so scanning the first chunk is enough.
+// right after the small header, so scanning the first chunk is enough. The
+// UTF-16LE scan itself lives in the decoder (bs_find_utf16).
 static int is_notification(const uint8_t *parcel, size_t len) {
     if (!parcel) return 0;
     size_t scan = len < 256 ? len : 256;
-    return contains_utf16(parcel, scan, WANT_IFACE);
+    return bs_find_utf16(parcel, scan, WANT_IFACE, 0) >= 0;
 }
 
 // Decode one transaction's Parcel in place and log the notification text. The

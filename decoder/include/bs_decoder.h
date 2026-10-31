@@ -33,6 +33,18 @@ void    bs_align4(bs_parcel *p);
 int     bs_read_string16(bs_parcel *p, char *out, size_t outcap);
 void    bs_skip_string16(bs_parcel *p);
 
+// --- UTF-16LE needle search -----------------------------------------------
+// Parcel strings are UTF-16LE, so we often need to locate an ASCII marker
+// (interface descriptor, Bundle key) encoded that way. `needle` is ASCII.
+// With require_terminator, the match must be followed by a UTF-16 NUL (so a
+// key "android.text" does not match inside "android.textLines").
+// bs_match_utf16_at: does `needle` start at byte offset `pos`?
+int  bs_match_utf16_at(const uint8_t *buf, size_t len, size_t pos,
+                       const char *needle, int require_terminator);
+// bs_find_utf16: byte offset of the first match, or -1 if absent.
+long bs_find_utf16(const uint8_t *buf, size_t len, const char *needle,
+                   int require_terminator);
+
 // --- token.c : binder interface token --------------------------------------
 // Consumes the transaction header (strict-mode, work-source, 'SYST') and reads
 // the interface descriptor String16 into `out`. 0 on success.
