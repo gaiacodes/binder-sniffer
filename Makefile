@@ -21,6 +21,9 @@ CFLAGS      := -Wall -Wextra -O2 -std=c11 $(INCLUDES)
 # ---- Host decoder test (your Mac) -----------------------------------------
 HOST_CC   ?= cc
 HOST_BIN  := $(BUILD)/host_decode
+UNIT_BIN  := $(BUILD)/unit_decoder
+# Sanitizers for the unit tests: catch OOB reads / UB, not just wrong values.
+SAN       := -fsanitize=address,undefined -fno-sanitize-recover=all
 
 # ---- Android targets (emulator), NDK cross-build --------------------------
 # Override NDK / API as needed for your install.
@@ -37,7 +40,7 @@ ADB       ?= $(HOME)/Library/Android/sdk/platform-tools/adb
 DEVDIR    ?= /data/local/tmp
 PKG       ?= com.bindersniffer.testapp
 
-.PHONY: all test hook injector deploy inject clean
+.PHONY: all test unit check hook injector deploy inject clean
 
 all: test hook injector
 
@@ -47,6 +50,14 @@ test: $(HOST_BIN)
 
 $(HOST_BIN): $(DECODER_SRC) tests/host_decode.c | $(BUILD)
 	$(HOST_CC) $(CFLAGS) $^ -o $@
+
+# --- sanitizer-checked unit tests (ASan + UBSan) ---
+unit: $(BUILD)
+	$(HOST_CC) $(SAN) $(CFLAGS) $(DECODER_SRC) tests/unit_decoder.c -o $(UNIT_BIN)
+	@$(UNIT_BIN)
+
+# --- everything the host can verify ---
+check: test unit
 
 # --- in-app hook library (decoder linked in) ---
 hook: $(HOOK_BIN)
