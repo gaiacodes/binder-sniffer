@@ -23,6 +23,7 @@ static int my_ioctl(int fd, unsigned long request, void *arg) {
 }
 
 static int my_callback(struct dl_phdr_info *info, size_t size, void *data) {
+    (void)size;  // dl_iterate_phdr contract param; unused here
     if (strstr(info->dlpi_name, "libbinder.so")) {
         __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "found libbinder");
         *(struct dl_phdr_info *)data = *info;
@@ -67,7 +68,7 @@ static void bshook_init(void) {
     }
     void **got_slot = NULL;
 
-    for (int i = 0; i < relocation_table_size / sizeof(Elf64_Rela); i++) {
+    for (size_t i = 0; i < relocation_table_size / sizeof(Elf64_Rela); i++) {
         Elf64_Rela relocation = relocation_table_addr[i];
         Elf64_Xword sym_index = ELF64_R_SYM(relocation.r_info);
         const char *name = string_blob_addr + symbol_table_addr[sym_index].st_name;
