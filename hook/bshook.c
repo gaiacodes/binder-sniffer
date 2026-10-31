@@ -24,7 +24,7 @@ static int my_ioctl(int fd, unsigned long request, void *arg) {
 
 static int my_callback(struct dl_phdr_info *info, size_t size, void *data) {
     if (strstr(info->dlpi_name, "libbinder.so")) {
-        __android_log_print(ANDROID_LOG_INFO, "HOOK", "found libbinder");
+        __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "found libbinder");
         *(struct dl_phdr_info *)data = *info;
         return 1;
     }
@@ -33,7 +33,7 @@ static int my_callback(struct dl_phdr_info *info, size_t size, void *data) {
 __attribute__((constructor))
 static void bshook_init(void) {
     struct dl_phdr_info libbinder_info = {0};
-    __android_log_print(ANDROID_LOG_INFO, "HOOK", "loaded");
+    __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "loaded");
     dl_iterate_phdr(my_callback, &libbinder_info);
     const Elf64_Dyn *dynamic = NULL;
     for (int i=0; i < libbinder_info.dlpi_phnum; i++) {
@@ -43,7 +43,7 @@ static void bshook_init(void) {
         }
     }
     if (dynamic == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, "HOOK", "no PT_DYNAMIC found");
+        __android_log_print(ANDROID_LOG_ERROR, "binder-sniffer", "no PT_DYNAMIC found");
         return;
     }
     Elf64_Rela * relocation_table_addr = NULL;
@@ -77,19 +77,19 @@ static void bshook_init(void) {
         }
     }
     if (got_slot == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, "HOOK", "no ioctl got slot found");
+        __android_log_print(ANDROID_LOG_ERROR, "binder-sniffer", "no ioctl got slot found");
         return;
     }
-    __android_log_print(ANDROID_LOG_INFO, "HOOK", "ioctl got_slot=%p  *got_slot=%p",
+    __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "ioctl got_slot=%p  *got_slot=%p",
                         (void *)got_slot, *got_slot);
 
     size_t pagesize = sysconf(_SC_PAGESIZE);
     uintptr_t page_start = (uintptr_t)got_slot & ~((uintptr_t)pagesize - 1);
     if (mprotect((void *)page_start, pagesize, PROT_READ | PROT_WRITE) != 0) {
-        __android_log_print(ANDROID_LOG_ERROR, "HOOK", "mprotect failed");
+        __android_log_print(ANDROID_LOG_ERROR, "binder-sniffer", "mprotect failed");
         return;
     }
-    __android_log_print(ANDROID_LOG_INFO, "HOOK", "got_slot page now writable");
+    __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "got_slot page now writable");
     real_ioctl = (ioctl_fn) *got_slot;
     *got_slot = &(my_ioctl);
 }
