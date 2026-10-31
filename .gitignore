@@ -16,6 +16,7 @@ local.properties
 # CMake / IDE indexing (machine-specific, generated)
 .cxx/
 compile_commands.json
+.cache/
 
 # Emulator / logs
 *.log
