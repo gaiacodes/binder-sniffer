@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Flow</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #000000; --muted: #595959; --rule: #cccccc;
+    --accent: #000000; --code-bg: #f2f2f2; --code-fg: #000000; --note-bg: #f6f6f6;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16px; line-height: 1.5; }
+  .page { max-width: 820px; margin: 0 auto; padding: 40px max(16px, 4vw) 72px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-style: italic; margin: 0 0 4px; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  p { margin: 10px 0; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+  .flow { counter-reset: fstep; margin: 12px 0; padding-left: 0; list-style: none; }
+  .flow > li { position: relative; padding: 5px 0 5px 28px; counter-increment: fstep; }
+  .flow > li::before { content: counter(fstep); position: absolute; left: 0; top: 5px; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); }
+  .phase { font-family: var(--mono); font-size: 13px; color: var(--accent); margin: 18px 0 2px; font-weight: 600; }
+  .pitch { font-size: 16px; background: var(--note-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 18px; margin: 14px 0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d0d0d; --fg: #f2f2f2; --muted: #a0a0a0; --rule: #3a3a3a; --accent: #f2f2f2; --code-bg: #1a1a1a; --code-fg: #f2f2f2; --note-bg: #161616; color-scheme: dark; }
+  }
+  @media print {
+    :root { --bg: #ffffff; --fg: #000000; --muted: #333333; --rule: #bbbbbb; --accent: #000000; --code-bg: #f3f3f3; --code-fg: #000000; --note-bg: #f7f7f7; }
+    body { font-size: 11pt; }
+    .page { max-width: none; padding: 0; }
+    @page { margin: 18mm 16mm 20mm; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Binder Sniffer &middot; 4 of 4 &middot; the recap</p>
+  <h1>The Whole Project in One Page</h1>
+  <p class="sub">The version to say out loud.</p>
+
+  <p class="pitch">Binder Sniffer watches one app's IPC from the inside. We flip a single pointer so the app's binder calls pass through our code, copy each notification's Parcel as it heads to the kernel, decode it in place, and log the title and text — then forward the call so nothing breaks.</p>
+
+  <p class="phase">Phase 1 — Install &amp; intercept (live, on the device)</p>
+  <ol class="flow">
+    <li>An <strong>injector</strong> uses <code>ptrace</code> to make the already-running app load our library (<code>libbshook.so</code>) into itself.</li>
+    <li>The library's <strong>constructor</strong> walks libbinder's ELF tables, finds the GOT slot for <code>ioctl</code>, makes the page writable, and overwrites it with our <code>my_ioctl</code>. The hook is now installed.</li>
+    <li>Every <code>ioctl</code> libbinder makes now enters <code>my_ioctl</code> first. It forwards everything untouched, only pausing on <code>BINDER_WRITE_READ</code> (the one that carries transactions).</li>
+    <li>For those, we <strong>walk the write command stream</strong>; for each <code>BC_TRANSACTION</code> we follow <code>data.ptr.buffer</code> to the Parcel and check whether it targets <code>INotificationManager</code>.</li>
+  </ol>
+
+  <p class="phase">Phase 2 — Decode &amp; log (same thread, in place)</p>
+  <ol class="flow">
+    <li>A matching Parcel goes to <code>bs_decode_enqueue</code>: read the <strong>interface token</strong>, then the <strong>arguments in order</strong> (keep the package), then <strong>scan the extras</strong> for <code>android.title</code> and <code>android.text</code>.</li>
+    <li>Print <code>pkg / title / text</code> with <code>__android_log_print</code>. Read it live with <code>adb logcat -s binder-sniffer</code>.</li>
+    <li><strong>Offline mirror:</strong> the identical decoder runs on a saved <code>.bin</code> in a host harness on the Mac — that's how it was built and verified before ever trusting it on-device.</li>
+  </ol>
+
+  <p style="margin-top:18px"><strong>Why it's safe:</strong> the decoder only reads memory and never calls <code>ioctl</code>, so it can't re-enter the hook; and logging goes to logd over a socket, not through <code>/dev/binder</code>. The app never notices.</p>
+
+</div>
+</body>
+</html>

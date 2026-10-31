@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Security Bootcamp</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --surface: #ffffff; --fg: #15181d; --muted: #5a626e;
+    --rule: #e2e5ea; --accent: #3457d5; --accent-soft: #eaeefb;
+    --chip: #eef0f4; --shadow: 0 1px 2px rgba(20,24,29,.06), 0 8px 24px rgba(20,24,29,.06);
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c0e12; --surface: #14171d; --fg: #e8eaee; --muted: #9aa3b0;
+      --rule: #262b33; --accent: #7d97f4; --accent-soft: #1a2540;
+      --chip: #1c212a; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c0e12; --surface: #14171d; --fg: #e8eaee; --muted: #9aa3b0;
+    --rule: #262b33; --accent: #7d97f4; --accent-soft: #1a2540;
+    --chip: #1c212a; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px max(20px, 4vw) 80px; }
+
+  header { margin-bottom: 8px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 12px; text-wrap: balance; }
+  .deck { font-size: 17px; color: var(--muted); max-width: 64ch; margin: 0 0 18px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { font-family: var(--mono); font-size: 12px; background: var(--chip); color: var(--fg); border: 1px solid var(--rule); border-radius: 999px; padding: 5px 11px; }
+  .split { display: flex; gap: 6px; }
+  .split b { color: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 34px; }
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 22px 22px 8px; box-shadow: var(--shadow); min-width: 0; }
+  .card > h2 { font-size: 19px; letter-spacing: -0.01em; margin: 0 0 2px; display: flex; align-items: baseline; gap: 10px; }
+  .num { font-family: var(--mono); font-size: 13px; color: var(--accent); background: var(--accent-soft); border-radius: 7px; padding: 2px 8px; flex: none; }
+  .card > p.lede { color: var(--muted); font-size: 14px; margin: 4px 0 14px; }
+
+  dl { margin: 0; }
+  dl > div { padding: 13px 0; border-top: 1px solid var(--rule); }
+  dt { font-weight: 650; font-size: 14.5px; margin-bottom: 3px; }
+  dd { margin: 0; color: var(--muted); font-size: 14px; }
+  dd code, dt code { font-family: var(--mono); font-size: .88em; background: var(--chip); padding: .08em .35em; border-radius: 4px; color: var(--fg); }
+
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; }
+
+  .toggle { position: fixed; top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); z-index: 10;
+    font-family: var(--mono); font-size: 12px; color: var(--fg); background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 999px; padding: 7px 13px; cursor: pointer; box-shadow: var(--shadow); }
+  .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media print { .toggle { display: none; } body { background: #fff; } .card { box-shadow: none; } }
+</style>
+</head>
+<body>
+<button class="toggle" id="themeBtn" aria-label="Toggle light and dark theme">theme</button>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">AI Security Bootcamp &middot; AISB</p>
+    <h1>Frontier AI Security, for people who break things</h1>
+    <p class="deck">A 7-day intensive for senior security professionals: offensive and defensive cybersecurity applied to machine-learning systems, with AI-safety concepts taught through a practical red-team lens.</p>
+    <div class="meta">
+      <span class="chip">7 days</span>
+      <span class="chip">senior practitioners</span>
+      <span class="chip split"><b>~70%</b> offense / defense</span>
+      <span class="chip split"><b>~30%</b> AI safety</span>
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <section class="card">
+      <h2><span class="num">01</span> LLM fundamentals</h2>
+      <p class="lede">How a model actually reads input — and why every layer of that is an attack surface.</p>
+      <dl>
+        <div><dt>Tokenization &amp; chat templates</dt><dd>Models see tokens, not text. A conversation is serialized with special role tokens; attacks abuse that serialization.</dd></div>
+        <div><dt>Log-probs as an attack surface</dt><dd>Exposed next-token probabilities leak hidden information and training data.</dd></div>
+        <div><dt>Instruction hierarchy &amp; prefills</dt><dd>System &gt; developer &gt; user ranking; attacks collapse the hierarchy or prefill the assistant's reply.</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">02</span> LLM attacks</h2>
+      <p class="lede">The practical exploit catalog against deployed language models.</p>
+      <dl>
+        <div><dt>Prompt injection</dt><dd>Malicious instructions hidden in content the model reads hijack it — the top practical LLM vulnerability.</dd></div>
+        <div><dt>RAG poisoning</dt><dd>Poison the retrieved knowledge base to control the model's answers.</dd></div>
+        <div><dt>Jailbreaking</dt><dd>Prompts crafted to bypass safety training.</dd></div>
+        <div><dt>Guardrails</dt><dd>Keyword filters, classifiers, LLM-as-judge, linear probes — build them and bypass them.</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">03</span> Stealing &amp; tampering with models</h2>
+      <p class="lede">Taking a model apart, copying it, and rewriting what it knows.</p>
+      <dl>
+        <div><dt>Knowledge-distillation attack</dt><dd>Query a model to train a copy — model theft.</dd></div>
+        <div><dt>Weight extraction via SVD</dt><dd>Reconstruct weights from the model's outputs.</dd></div>
+        <div><dt>Model editing</dt><dd>Surgically change facts or behaviors directly in the weights.</dd></div>
+        <div><dt>Backdooring</dt><dd>A hidden trigger causes malicious behavior on demand.</dd></div>
+        <div><dt>Abliteration / LoRA safety removal</dt><dd>Strip safety training out of an open-weights model.</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">04</span> Adversarial ML</h2>
+      <p class="lede">Optimization-driven attacks in pixel and embedding space.</p>
+      <dl>
+        <div><dt>Adversarial attacks on vision models</dt><dd>Invisible perturbations fool classifiers.</dd></div>
+        <div><dt>GCG</dt><dd>Automatically finds a jailbreak suffix string.</dd></div>
+        <div><dt>Continuous adversarial prefixes</dt><dd>Optimize directly in embedding space (whitebox).</dd></div>
+        <div><dt>Watermarking / provenance</dt><dd>Detecting AI-generated content and testing watermark robustness.</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">05</span> AI Control</h2>
+      <p class="lede">Safety-flavored: assume the model might be against you, and contain it anyway.</p>
+      <dl>
+        <div><dt>Premise</dt><dd>Assume the model may be untrustworthy; design the system to contain it.</dd></div>
+        <div><dt>Protocols</dt><dd>Trusted monitoring, defer-to-trusted, resampling — increasingly central for coding agents.</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2><span class="num">06</span> Infrastructure &amp; hardware security</h2>
+      <p class="lede">From threat modeling down to bit-flips in GPU memory.</p>
+      <dl>
+        <div><dt>MITRE ATLAS threat modeling</dt><dd>The AI-system counterpart to ATT&amp;CK.</dd></div>
+        <div><dt>Securing model weights (RAND tiers)</dt><dd>Protect the crown jewels against escalating classes of threat actor.</dd></div>
+        <div><dt>Side-channel monitoring</dt><dd>Infer hardware activity from power, timing, and EM signals.</dd></div>
+        <div><dt>GPU RowHammer</dt><dd>Bit-flip hardware attack against GPU memory.</dd></div>
+        <div><dt>NVIDIA Container Toolkit — <code>CVE-2025-23266</code></dt><dd>Container-escape vulnerability in GPU tooling.</dd></div>
+        <div><dt>Agent-swarm incident response</dt><dd>Handling incidents across many autonomous agents at once.</dd></div>
+      </dl>
+    </section>
+
+  </main>
+
+  <footer>
+    Six modules across seven days &mdash; roughly 70% offensive and defensive security applied to ML systems, 30% AI-safety concepts taught through a red-team lens.
+  </footer>
+
+</div>
+<script>
+  (function () {
+    var btn = document.getElementById('themeBtn');
+    var root = document.documentElement;
+    function current() {
+      var set = root.getAttribute('data-theme');
+      if (set) return set;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    btn.addEventListener('click', function () {
+      var next = current() === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('aisb-theme', next); } catch (e) {}
+    });
+    try {
+      var saved = localStorage.getItem('aisb-theme');
+      if (saved) root.setAttribute('data-theme', saved);
+    } catch (e) {}
+  })();
+</script>
+</body>
+</html>

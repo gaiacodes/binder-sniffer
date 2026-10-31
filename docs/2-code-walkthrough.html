@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Binder Sniffer Walkthrough</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #000000; --muted: #595959; --rule: #cccccc;
+    --accent: #000000; --code-bg: #f2f2f2; --code-fg: #000000; --note-bg: #f6f6f6;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16px; line-height: 1.5; }
+  .page { max-width: 820px; margin: 0 auto; padding: 40px max(16px, 4vw) 72px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h3 { font-family: var(--mono); font-size: 15px; margin: 24px 0 8px; color: var(--accent); }
+  .sub { color: var(--muted); font-style: italic; margin: 0 0 4px; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  p { margin: 10px 0; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+  pre { font-family: var(--mono); font-size: 12.5px; line-height: 1.45; background: var(--code-bg); color: var(--code-fg); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 4px; padding: 14px 16px; overflow-x: auto; margin: 14px 0; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .notes { margin: 12px 0 8px; padding-left: 0; list-style: none; counter-reset: step; }
+  .notes > li { position: relative; padding: 6px 0 6px 40px; border-top: 1px solid var(--rule); counter-increment: step; }
+  .notes > li::before { content: counter(step); position: absolute; left: 0; top: 6px; width: 26px; height: 26px; font-family: var(--mono); font-size: 13px; color: var(--accent); border: 1px solid var(--accent); border-radius: 50%; display: grid; place-items: center; }
+  .lead { font-size: 17px; border-left: 3px solid var(--accent); padding: 2px 0 2px 16px; margin: 14px 0 20px; color: var(--fg); }
+  .map { font-family: var(--mono); font-size: 12px; line-height: 1.35; white-space: pre; overflow-x: auto; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; margin: 14px 0; }
+  .filehdr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--fg); padding-bottom: 6px; margin-top: 8px; }
+  .filehdr .path { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .rest { margin: 10px 0; padding-left: 0; list-style: none; }
+  .rest > li { padding: 9px 0; border-top: 1px solid var(--rule); }
+  .rest .p { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d0d0d; --fg: #f2f2f2; --muted: #a0a0a0; --rule: #3a3a3a; --accent: #f2f2f2; --code-bg: #1a1a1a; --code-fg: #f2f2f2; --note-bg: #161616; color-scheme: dark; }
+  }
+  @media print {
+    :root { --bg: #ffffff; --fg: #000000; --muted: #333333; --rule: #bbbbbb; --accent: #000000; --code-bg: #f3f3f3; --code-fg: #000000; --note-bg: #f7f7f7; }
+    body { font-size: 11pt; }
+    .page { max-width: none; padding: 0; }
+    @page { margin: 18mm 16mm 20mm; }
+    pre, .map { font-size: 9pt; page-break-inside: avoid; }
+    .notes > li, .rest > li { page-break-inside: avoid; }
+    section { page-break-before: always; }
+    h3 { page-break-after: avoid; }
+    a { color: #000; text-decoration: none; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Binder Sniffer &middot; 2 of 4 &middot; the important bits</p>
+  <h1>Binder Sniffer Code Walkthrough</h1>
+  <p class="sub">The five pieces that make it work — the rest in one line each.</p>
+
+  <p class="lead">This is the focused read: the headline mechanism (the GOT swap) and the four decode steps that carry the logic. The trivial plumbing is summarized at the end so nothing's a mystery, without spending a page on each.</p>
+
+  <h2>The one picture</h2>
+  <div class="map">APP ──ioctl()──►  [ my_ioctl ]  ──►  real_ioctl()  ──►  KERNEL  (/dev/binder)
+                        │
+                        │  request == BINDER_WRITE_READ ?
+                        ▼
+                 bs_capture_bwr()                         hook/capture.c
+                        │  walk the command stream
+                        │  for each BC_TRANSACTION:
+                        │    follow data.ptr.buffer → the Parcel bytes
+                        │    is_notification()?  (scan for INotificationManager)
+                        ▼
+                 bs_decode_enqueue(bytes, len, &amp;notif)    decoder/src/svc_notification.c
+                        │
+          ┌─────────────┼───────────────────────────┐
+          ▼             ▼                             ▼
+   interface token   leading AIDL args        extras Bundle lookup
+   token.c           parcel.c (String16)      bundle.c  → android.title / android.text
+                        │
+                        ▼
+              __android_log_print(...)   →   adb logcat -s binder-sniffer</div>
+  <p>Two halves: <strong>capture</strong> (live, in the app) and <strong>decode</strong> (pure C, no I/O — runs both on-device and offline against a saved capture). Below: the swap that installs the hook, then the decode in the order the bytes arrive.</p>
+
+  <!-- ============================= HOOK ============================= -->
+  <section>
+    <div class="filehdr"><h2>The mechanism — the GOT swap</h2><span class="path">hook/bshook.c</span></div>
+    <p>The whole trick: libbinder calls <code>ioctl</code> indirectly through one pointer in its Global Offset Table. Overwrite that pointer with ours and every binder call passes through us first.</p>
+
+<pre><code>typedef int (*ioctl_fn)(int, unsigned long, ...);
+static ioctl_fn real_ioctl = NULL;
+
+static int my_ioctl(int fd, unsigned long request, void *arg) {
+    if (request == BINDER_WRITE_READ &amp;&amp; arg) {
+        bs_capture_bwr((const struct binder_write_read *)arg);
+    }
+    return real_ioctl(fd, request, arg);   // always forward
+}</code></pre>
+    <p>A load-time constructor finds the slot and swaps it:</p>
+<pre><code>real_ioctl = (ioctl_fn) *got_slot;   // save the original
+*got_slot  = &amp;(my_ioctl);            // redirect to ours</code></pre>
+    <ol class="notes">
+      <li><strong>Finding the slot</strong> (the ELF legwork): a <code>__attribute__((constructor))</code> runs when the <code>.so</code> loads; it uses <code>dl_iterate_phdr</code> to locate libbinder, walks its <code>PT_DYNAMIC</code> table for the symbol/string/relocation tables, and scans relocations for the one named <code>"ioctl"</code>. That relocation's offset (plus the load base) is <code>got_slot</code>.</li>
+      <li><strong>mprotect past RELRO.</strong> The GOT is read-only after startup, so we round the slot down to its page and <code>mprotect</code> it read+write before the swap.</li>
+      <li><strong>Save, then redirect.</strong> Two lines: stash the real <code>ioctl</code> in a global, point the slot at <code>my_ioctl</code>. From now on <code>my_ioctl</code> runs first and always forwards, so the app never notices.</li>
+      <li><strong>Why GOT patching?</strong> No instruction rewriting, no trampolines — flip one pointer, and uninstall by restoring it.</li>
+    </ol>
+  </section>
+
+  <!-- ============================= CAPTURE ============================= -->
+  <section>
+    <div class="filehdr"><h2>The live walk</h2><span class="path">hook/capture.c</span></div>
+    <p>On each <code>BINDER_WRITE_READ</code> we walk the outgoing command stream, find transactions, and hand matching Parcels to the decoder.</p>
+
+<pre><code>void bs_capture_bwr(const struct binder_write_read *bwr) {
+    uintptr_t base = (uintptr_t)bwr-&gt;write_buffer;
+    size_t off = 0;
+    while (off + 4 &lt;= (size_t)bwr-&gt;write_size) {
+        uint32_t cmd = *(uint32_t *)(base + off);
+        uint32_t payload = BC_PAYLOAD_SIZE(cmd);   // (cmd &gt;&gt; 16) &amp; 0x3FFF
+        off += 4;
+        if (cmd == BC_TRANSACTION || cmd == BC_TRANSACTION_SG) {
+            const struct binder_transaction_data *btd =
+                (const struct binder_transaction_data *)(base + off);
+            const uint8_t *parcel = (const uint8_t *)btd-&gt;data.ptr.buffer;
+            size_t len = (size_t)btd-&gt;data_size;
+            if (is_notification(parcel, len))         // UTF-16 scan, first 256B
+                log_notification(btd, parcel, len);   // decode + __android_log_print
+        }
+        off += payload;
+    }
+}</code></pre>
+    <ol class="notes">
+      <li><strong>The write buffer is a packed stream of commands</strong>, not one message — so we loop. Each command's payload size is encoded in its own code (the <code>_IOC_SIZE</code> field), which is how we step without a lookup table.</li>
+      <li><strong>The Parcel isn't inline.</strong> <code>btd-&gt;data.ptr.buffer</code> is a pointer to the payload elsewhere in memory; we follow it. It's valid because we're in the app's own address space during its <code>ioctl</code>.</li>
+      <li><strong>Filter, then decode.</strong> <code>is_notification</code> scans the first 256 bytes for <code>INotificationManager</code>; only matches reach the decoder. <code>log_notification</code> runs <code>bs_decode_enqueue</code> and logs — the decoder is read-only, so it's safe here, and logging goes to logd over a socket (not <code>/dev/binder</code>), so it can't re-enter the hook.</li>
+    </ol>
+  </section>
+
+  <!-- ============================= PARCEL ============================= -->
+  <section>
+    <div class="filehdr"><h2>The wire format that matters</h2><span class="path">decoder/src/parcel.c</span></div>
+    <p>A Parcel is numbers and strings end to end, each padded to 4 bytes. The one primitive worth studying is the string reader — everything else is a bounds-checked <code>memcpy</code>.</p>
+
+<pre><code>int bs_read_string16(bs_parcel *p, char *out, size_t outcap) {
+    int32_t len = bs_read_i32(p);          // code units, or -1 = null string
+    if (p-&gt;error) return 1;
+    if (len &lt; 0) { if (outcap) out[0] = 0; return 0; }
+    size_t nbytes = (size_t)(len + 1) * 2;   // len UTF-16 units + null terminator
+    if (!ensure(p, nbytes)) return 1;
+    size_t o = 0;
+    for (int32_t i = 0; i &lt; len; i++) {
+        uint16_t c;
+        memcpy(&amp;c, p-&gt;data + p-&gt;pos + (size_t)i * 2, 2);
+        if (o + 1 &lt; outcap) out[o++] = (c &lt; 0x80) ? (char)c : '?';   // UTF-16 → ASCII
+    }
+    if (outcap) out[o] = 0;
+    p-&gt;pos += nbytes;        // consume chars + null terminator
+    bs_align4(p);            // step over padding to the next 4-byte boundary
+    return 0;
+}</code></pre>
+    <ol class="notes">
+      <li><strong>String16 on the wire:</strong> an <code>int32</code> length in <em>code units</em>, then that many 2-byte little-endian units, a 2-byte null, then padding to 4. <code>-1</code> means a null string.</li>
+      <li><strong>Alignment is the classic bug.</strong> After a string, the next item starts on a multiple of 4; forget <code>bs_align4</code> and everything after reads as garbage.</li>
+      <li><strong>Bounds are handled once.</strong> Every read goes through <code>ensure()</code>, which latches an <code>error</code> flag on overflow so a malformed Parcel yields empty output, never a crash.</li>
+    </ol>
+  </section>
+
+  <!-- ============================= BUNDLE ============================= -->
+  <section>
+    <div class="filehdr"><h2>The clever shortcut</h2><span class="path">decoder/src/bundle.c</span></div>
+    <p>Rather than parse the whole Notification object field-by-field (version-fragile), we <em>scan</em> the bytes for the key and decode the value right after it.</p>
+
+<pre><code>// find the key as UTF-16LE, requiring a null terminator after the match
+// so "android.text" doesn't match the start of "android.textLines"
+static long find_key_utf16(const uint8_t *buf, size_t len, const char *s) { ... }
+
+int bs_bundle_get_charseq(const bs_parcel *whole, const char *key,
+                          char *out, size_t outcap) {
+    long chars = find_key_utf16(whole-&gt;data, whole-&gt;size, key);
+    if (chars &lt; 0) return 1;
+    size_t pos = (size_t)chars + strlen(key) * 2 + 2;   // past chars + null
+    pos = (pos + 3u) &amp; ~((size_t)3u);                    // align to 4
+
+    bs_parcel p; bs_parcel_init(&amp;p, whole-&gt;data, whole-&gt;size); p.pos = pos;
+    int32_t vtype = bs_read_i32(&amp;p);
+    if (vtype == VAL_CHARSEQUENCE) { (void)bs_read_i32(&amp;p); /* kind */ }
+    return bs_read_string16(&amp;p, out, outcap);            // the actual text
+}</code></pre>
+    <ol class="notes">
+      <li><strong>Scan, don't parse.</strong> Slide over the buffer matching the key in UTF-16; the null-terminator check is what prevents false prefixes. Returns where the key's chars start.</li>
+      <li><strong>The value is a tagged union.</strong> An <code>int32</code> type tag, then the payload: <code>VAL_STRING (0)</code> is a bare String16; <code>VAL_CHARSEQUENCE (10)</code> inserts one "kind" int first. Either way it ends in the String16 we want.</li>
+      <li><strong>This is the one deliberate rigor-for-simplicity trade</strong> — reliable because <code>android.title</code>/<code>android.text</code> are distinctive, but not a real Bundle parse.</li>
+    </ol>
+  </section>
+
+  <!-- ============================= ORCHESTRATION ============================= -->
+  <section>
+    <div class="filehdr"><h2>The whole decode in one function</h2><span class="path">decoder/src/svc_notification.c</span></div>
+    <p>Everything above, assembled. Read it and you can see the strategy switch mid-function.</p>
+
+<pre><code>int bs_decode_enqueue(const uint8_t *buf, size_t len, bs_notif *out) {
+    memset(out, 0, sizeof(*out));
+    bs_parcel p; bs_parcel_init(&amp;p, buf, len);
+
+    // 1. header + the AIDL args, read IN ORDER
+    bs_read_interface_token(&amp;p, out-&gt;interface, sizeof(out-&gt;interface));
+    bs_read_string16(&amp;p, out-&gt;pkg, sizeof(out-&gt;pkg));   // pkg (kept)
+    bs_skip_string16(&amp;p);                                // opPkg
+    bs_skip_string16(&amp;p);                                // tag
+    (void)bs_read_i32(&amp;p);                               // id
+    if (p.error) return 1;
+    // the Notification parcelable + userId follow — we don't walk them
+
+    // 2. title/text by SCANNING the extras (a second, whole-buffer cursor)
+    bs_parcel whole; bs_parcel_init(&amp;whole, buf, len);
+    out-&gt;have_title = (bs_bundle_get_charseq(&amp;whole, "android.title", out-&gt;title, sizeof(out-&gt;title)) == 0);
+    out-&gt;have_text  = (bs_bundle_get_charseq(&amp;whole, "android.text",  out-&gt;text,  sizeof(out-&gt;text))  == 0);
+    return 0;
+}</code></pre>
+    <ol class="notes">
+      <li><strong>Two strategies, one function.</strong> Ordered reading for the fixed prefix (token, then args in declaration order), then a second whole-buffer cursor that <em>scans</em> for the deep extras. That split is the key design decision.</li>
+      <li><strong>Order is everything in step 1.</strong> Each call consumes exactly its bytes so the next starts correctly — keep <code>pkg</code>, skip <code>opPkg</code>/<code>tag</code>, discard <code>id</code>.</li>
+      <li><strong>We stop before the Notification parcelable</strong> on purpose — walking it field-by-field is the fragile part, so the scan in step 2 does the job instead.</li>
+    </ol>
+  </section>
+
+  <!-- ============================= THE REST ============================= -->
+  <section>
+    <h2>The supporting cast (one line each)</h2>
+    <p>Real code, but nothing surprising — here so the picture is complete.</p>
+    <ul class="rest">
+      <li><span class="p">decoder/include/bs_decoder.h</span> — the two shapes: a <code>bs_parcel</code> cursor (<code>data/size/pos</code> + a latching <code>error</code>) and a fixed-size <code>bs_notif</code> result. No malloc anywhere.</li>
+      <li><span class="p">bs_read_i32 / bs_read_i64 / ensure</span> — the base readers: bounds-check, <code>memcpy</code> (safe for unaligned, little-endian on arm64), advance <code>pos</code>.</li>
+      <li><span class="p">bs_align4 / bs_skip_string16</span> — round <code>pos</code> up to a multiple of 4; skip a string's bytes without copying when we don't need its value.</li>
+      <li><span class="p">decoder/src/token.c</span> — the interface token: read past three int32s (strict-mode, work-source, the <code>'SYST'</code> header), then the descriptor String16.</li>
+      <li><span class="p">hook/capture.c · is_notification</span> — a UTF-16 substring scan of the first 256 bytes for <code>INotificationManager</code>.</li>
+      <li><span class="p">tests/host_decode.c</span> — the offline driver: read a <code>.bin</code> into memory, call the same <code>bs_decode_enqueue</code>, print the result. Proves the decoder has no device dependency.</li>
+    </ul>
+  </section>
+
+  <div class="note" style="margin-top:22px;color:var(--muted);font-style:italic">Want every function quoted in full? The complete line-by-line version still exists — ask for the long walkthrough.</div>
+
+</div>
+</body>
+</html>

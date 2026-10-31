@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Does It Need Root?</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #000000; --muted: #595959; --rule: #cccccc;
+    --accent: #000000; --code-bg: #f2f2f2; --code-fg: #000000; --note-bg: #f6f6f6;
+    --yes: #000000; --no: #000000;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16px; line-height: 1.5; }
+  .page { max-width: 820px; margin: 0 auto; padding: 40px max(16px, 4vw) 72px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; margin: 30px 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-style: italic; margin: 0 0 4px; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  p { margin: 10px 0; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+  .lead { font-size: 17px; border-left: 3px solid var(--accent); padding: 2px 0 2px 16px; margin: 14px 0 20px; }
+  .verdicts { display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0; }
+  .verdict { flex: 1 1 300px; min-width: 0; border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; background: var(--note-bg); }
+  .verdict .tag { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .verdict.n { border-left: 4px solid var(--no); } .verdict.n .tag { color: var(--no); }
+  .verdict.y { border-left: 4px solid var(--yes); } .verdict.y .tag { color: var(--yes); }
+  .verdict h3 { margin: 4px 0 6px; font-size: 17px; font-family: var(--serif); }
+  .reasons { margin: 10px 0; padding-left: 0; list-style: none; counter-reset: r; }
+  .reasons > li { position: relative; padding: 8px 0 8px 40px; border-top: 1px solid var(--rule); counter-increment: r; }
+  .reasons > li::before { content: counter(r); position: absolute; left: 0; top: 8px; width: 26px; height: 26px; font-family: var(--mono); font-size: 13px; color: var(--accent); border: 1px solid var(--accent); border-radius: 50%; display: grid; place-items: center; }
+  .box { background: var(--note-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 18px; margin: 20px 0; }
+  .box h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d0d0d; --fg: #f2f2f2; --muted: #a0a0a0; --rule: #3a3a3a; --accent: #f2f2f2; --code-bg: #1a1a1a; --code-fg: #f2f2f2; --note-bg: #161616; --yes: #f2f2f2; --no: #f2f2f2; color-scheme: dark; }
+  }
+  @media print {
+    :root { --bg: #ffffff; --fg: #000000; --muted: #333333; --rule: #bbbbbb; --accent: #000000; --code-bg: #f3f3f3; --code-fg: #000000; --note-bg: #f7f7f7; --yes: #000000; --no: #000000; }
+    body { font-size: 11pt; }
+    .page { max-width: none; padding: 0; }
+    @page { margin: 18mm 16mm 20mm; }
+    .verdict, .box, .reasons > li { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Binder Sniffer &middot; would it run on a stock phone?</p>
+  <h1>Does It Need Root?</h1>
+  <p class="sub">Root isn't needed to hook and decode binder — it's needed to break into someone else's process to do it.</p>
+
+  <p class="lead">The PoC has two halves, and only one needs privilege. The <strong>hook + decoder</strong> run inside the target process and touch only its own memory — no privilege. The <strong>injector</strong> forces a different, already-running app to load that hook — and that is the part a stock device blocks.</p>
+
+  <div class="verdicts">
+    <div class="verdict n">
+      <div class="tag">As built — No</div>
+      <h3>Injecting into another app</h3>
+      <p style="margin:6px 0">Loading the hook into the testapp from the outside needs root + permissive SELinux. A retail phone gives neither.</p>
+    </div>
+    <div class="verdict y">
+      <div class="tag">The technique — Yes</div>
+      <h3>Hooking your own app</h3>
+      <p style="margin:6px 0">GOT-patch + Parcel decode inside your own process works on a stock device with no root at all.</p>
+    </div>
+  </div>
+
+  <h2>Why no — the root-dependent parts</h2>
+  <p>Everything that breaks lives in the <strong>injector</strong>, which uses <code>ptrace</code> to make a different app <code>dlopen</code> our <code>.so</code>. That crosses the app sandbox, and stock Android stops it three ways:</p>
+  <ol class="reasons">
+    <li><strong>The app sandbox (UID isolation).</strong> Every app runs as its own UID. You may <code>ptrace</code> only a process of your own UID or with <code>CAP_SYS_PTRACE</code>. Our injector ran as <strong>root</strong>; a normal process can't attach to another app at all.</li>
+    <li><strong>SELinux enforcing.</strong> Even as root, production policy forbids ptracing app/system domains. The PoC relied on <code>setenforce 0</code> (permissive) — which itself needs root and isn't possible on a production <code>user</code> build.</li>
+    <li><strong>No <code>adb root</code>.</strong> On a shipping device adbd runs as <code>shell</code>, not root, so it can't disable SELinux or inject. The emulator gave us <code>adb root</code> and a <code>userdebug</code>/permissive build; a retail phone gives neither.</li>
+  </ol>
+  <p>In other words, the capability the PoC demonstrates — <em>inject into an arbitrary app and read its IPC</em> — is exactly the sandbox-crossing move that root and SELinux exist to prevent. This is why tools like Frida need a rooted device for the same job.</p>
+
+  <h2>Why yes — the technique isn't the privileged part</h2>
+  <p>To observe <strong>your own app's</strong> binder traffic, drop the injector entirely:</p>
+  <ol class="reasons">
+    <li><strong>Load the hook in-process.</strong> Build the <code>.so</code> into your own APK and let its <code>__attribute__((constructor))</code> run at load, or call the GOT-patch from your own code. Patching libbinder's <code>ioctl</code> slot and decoding the Parcel all happen on memory you already own — no <code>ptrace</code>, no SELinux violation, no root.</li>
+    <li><strong>You're hooking the client side anyway.</strong> The testapp <em>is</em> the client sending <code>enqueueNotificationWithTag</code>, so hooking it is a perfect fit. You never needed to reach <code>system_server</code>, which you couldn't touch regardless.</li>
+  </ol>
+  <p>What you still can't do without root: sniff a <em>different</em> app's or the system's notifications. That's the sandbox boundary, and only root (or an exploit) crosses it.</p>
+
+  <div class="box">
+    <h4>One nuance</h4>
+    <p style="margin:6px 0">A <strong>debuggable</strong> app (<code>android:debuggable=true</code>) can be reached by <code>shell</code> via <code>run-as</code> without root, because <code>run-as</code> drops to that app's UID. So a debuggable build of your own app is easier to instrument than a release build — but another developer's release app stays closed to you, and ptrace-style <code>.so</code> injection is still awkward there because the <code>shell</code> SELinux domain restricts it. Building the hook into the app is the clean path.</p>
+  </div>
+
+  <p style="margin-top:18px"><strong>Bottom line:</strong> keep the hook in your own process and the whole thing runs on a stock phone; try to reach into another app's process and you're back to needing root.</p>
+
+</div>
+</body>
+</html>

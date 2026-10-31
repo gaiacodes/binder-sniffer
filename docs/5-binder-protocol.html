@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Binder Works</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #000000; --muted: #595959; --rule: #cccccc;
+    --accent: #000000; --code-bg: #f2f2f2; --code-fg: #000000; --note-bg: #f6f6f6;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16px; line-height: 1.5; }
+  .page { max-width: 820px; margin: 0 auto; padding: 40px max(16px, 4vw) 72px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; margin: 30px 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-style: italic; margin: 0 0 4px; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  p { margin: 10px 0; }
+  strong em, em { }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+  .lead { font-size: 17px; border-left: 3px solid var(--accent); padding: 2px 0 2px 16px; margin: 14px 0 20px; }
+  .map { font-family: var(--mono); font-size: 12px; line-height: 1.35; white-space: pre; overflow-x: auto; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; margin: 14px 0; }
+  .box { background: var(--note-bg); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 18px; margin: 20px 0; }
+  .box h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  td.f { font-family: var(--mono); font-size: 12px; color: var(--accent); white-space: nowrap; }
+  .cols { display: flex; flex-wrap: wrap; gap: 24px; }
+  .cols > div { flex: 1 1 260px; min-width: 0; }
+  .cmdlist { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+  .cmdlist .h { color: var(--accent); font-weight: 600; }
+  .cmdlist .c { color: var(--fg); } .cmdlist .d { color: var(--muted); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d0d0d; --fg: #f2f2f2; --muted: #a0a0a0; --rule: #3a3a3a; --accent: #f2f2f2; --code-bg: #1a1a1a; --code-fg: #f2f2f2; --note-bg: #161616; color-scheme: dark; }
+  }
+  @media print {
+    :root { --bg: #ffffff; --fg: #000000; --muted: #333333; --rule: #bbbbbb; --accent: #000000; --code-bg: #f3f3f3; --code-fg: #000000; --note-bg: #f7f7f7; }
+    body { font-size: 11pt; }
+    .page { max-width: none; padding: 0; }
+    @page { margin: 18mm 16mm 20mm; }
+    .map, table, .box { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Binder Sniffer &middot; the binder protocol (companion to the theory page)</p>
+  <h1>How the Binder Protocol Works</h1>
+  <p class="sub">What actually travels through ioctl(/dev/binder) — the layer the sniffer sits on.</p>
+
+  <p class="lead">Binder is a request/response protocol spoken between a process and the kernel driver. Userspace never talks to another process directly — it exchanges little command packets with the driver, and the driver relays a transaction into the other process. Everything below is those packets.</p>
+
+  <h2>1. The model: three parties, one copy</h2>
+  <p>A binder call has three participants: a <strong>client</strong>, a <strong>server</strong>, and the <strong>kernel driver</strong> that brokers between them. The client never names a process or address — it names an <em>object</em> by a small integer handle, and the driver knows which process owns it.</p>
+  <p>Each process <code>mmap</code>s <code>/dev/binder</code> once at startup, giving the kernel a buffer it can write incoming transactions into. When a transaction is sent, the driver does a <strong>single copy</strong>: from the sender's data buffer straight into the receiver's mapped region. No double buffering, no serialization in the kernel — the driver treats the payload as opaque bytes (that payload is the Parcel).</p>
+
+  <h2>2. One synchronous call, end to end</h2>
+  <div class="map">CLIENT process                 KERNEL (binder driver)              SERVER process
+──────────────                 ──────────────────────              ──────────────
+ioctl(fd, BINDER_WRITE_READ)
+  write: BC_TRANSACTION  ─────►  find target by handle
+                                 copy payload into server's
+                                 mapped buffer, queue it
+  read: BR_TRANSACTION_COMPLETE ◄── (your send was accepted)
+  ...client blocks in read...
+                                 wake a server thread ──────────►  ioctl(... ) read returns
+                                                                    BR_TRANSACTION  (code, buffer)
+                                                                    → dispatch to onTransact()
+                                                                    → do the work
+                                 ◄───────────────────────────────  write: BC_REPLY
+  read returns: BR_REPLY  ◄──────  copy reply into client buffer
+  → unblock, read the result
+                                                                    write: BC_FREE_BUFFER
+                                                                    (release the mapped bytes)</div>
+  <p>A <strong>one-way</strong> (async) call sets the <code>TF_ONE_WAY</code> flag: the driver queues it and returns immediately, there is no <code>BR_REPLY</code>, and the client never blocks. Our target, <code>enqueueNotificationWithTag</code>, is a normal synchronous call.</p>
+
+  <h2>3. The transport: BINDER_WRITE_READ</h2>
+  <p>One <code>ioctl</code> command does nearly everything: <code>BINDER_WRITE_READ</code>. Its argument bundles an outgoing command buffer and space for incoming ones, so a single syscall both sends and receives.</p>
+  <div class="wrap"><table>
+    <tr><th>field</th><th>meaning</th></tr>
+    <tr><td class="f">write_size</td><td>bytes of commands to send to the driver</td></tr>
+    <tr><td class="f">write_consumed</td><td>how many the driver processed (it updates this)</td></tr>
+    <tr><td class="f">write_buffer</td><td>pointer to the outgoing command stream (the part we read)</td></tr>
+    <tr><td class="f">read_size</td><td>capacity for commands coming back</td></tr>
+    <tr><td class="f">read_consumed</td><td>how many bytes the driver returned</td></tr>
+    <tr><td class="f">read_buffer</td><td>pointer to where returns (BR_*) are written</td></tr>
+  </table></div>
+  <p>The sniffer only looks at <code>write_buffer</code>/<code>write_size</code> — the commands leaving the app. The reply side (<code>read_buffer</code>) we leave alone.</p>
+
+  <h2>4. The command stream: BC out, BR back</h2>
+  <p>Both buffers are packed streams of commands. Each command is a 32-bit code, optionally followed by a fixed payload. The code is defined with the kernel's <code>_IOW</code>/<code>_IOWR</code> macros, so its <strong>size field (bits 16–29) encodes the payload length</strong> — which is exactly how you step from one command to the next without a lookup table (<code>BC_PAYLOAD_SIZE</code> in the hook).</p>
+  <div class="cols">
+    <div>
+      <div class="cmdlist">
+        <div class="h">BC_* &mdash; app → driver</div>
+        <div><span class="c">BC_TRANSACTION</span> <span class="d">start a call</span></div>
+        <div><span class="c">BC_REPLY</span> <span class="d">answer one</span></div>
+        <div><span class="c">BC_TRANSACTION_SG</span> <span class="d">+ scatter-gather size</span></div>
+        <div><span class="c">BC_FREE_BUFFER</span> <span class="d">release received bytes</span></div>
+        <div><span class="c">BC_ENTER_LOOPER</span> <span class="d">this thread joins the pool</span></div>
+        <div><span class="c">BC_ACQUIRE / BC_RELEASE</span> <span class="d">refcount a handle</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="cmdlist">
+        <div class="h">BR_* &mdash; driver → app</div>
+        <div><span class="c">BR_TRANSACTION</span> <span class="d">an incoming call</span></div>
+        <div><span class="c">BR_REPLY</span> <span class="d">your call's result</span></div>
+        <div><span class="c">BR_TRANSACTION_COMPLETE</span> <span class="d">send accepted</span></div>
+        <div><span class="c">BR_SPAWN_LOOPER</span> <span class="d">make another thread</span></div>
+        <div><span class="c">BR_NOOP</span> <span class="d">filler</span></div>
+        <div><span class="c">BR_DEAD_BINDER</span> <span class="d">target died</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>5. Inside a transaction</h2>
+  <p>A <code>BC_TRANSACTION</code>'s payload is a <code>binder_transaction_data</code>. It is the envelope; the method arguments live <em>behind a pointer</em> in it, not inline.</p>
+  <div class="wrap"><table>
+    <tr><th>field</th><th>meaning</th></tr>
+    <tr><td class="f">target.handle</td><td>which object the call is for (an index, not an address)</td></tr>
+    <tr><td class="f">code</td><td>which method — the AIDL transaction code (ours is 7)</td></tr>
+    <tr><td class="f">flags</td><td>e.g. <code>TF_ONE_WAY</code> for async, accept-fds</td></tr>
+    <tr><td class="f">sender_pid / euid</td><td>filled in by the kernel — the caller's identity the server can trust</td></tr>
+    <tr><td class="f">data_size</td><td>length of the Parcel payload</td></tr>
+    <tr><td class="f">offsets_size</td><td>length of the offsets array (see below)</td></tr>
+    <tr><td class="f">data.ptr.buffer</td><td>pointer to the Parcel bytes — <strong>what the sniffer decodes</strong></td></tr>
+    <tr><td class="f">data.ptr.offsets</td><td>pointer to an array marking embedded binder objects</td></tr>
+  </table></div>
+  <p>The <strong>data buffer is a Parcel</strong> — the flat argument bytes. The <strong>offsets array</strong> lists positions inside that buffer where a <code>flat_binder_object</code> sits (a passed binder reference or a file descriptor). The kernel walks those offsets and <em>translates</em> each one as it crosses the boundary: a local object (<code>BINDER_TYPE_BINDER</code>) in the sender becomes a handle (<code>BINDER_TYPE_HANDLE</code>) in the receiver. The sniffer ignores the offsets — notification title/text are plain Parcel data, not binder objects.</p>
+
+  <h2>6. Addressing: handles and the context manager</h2>
+  <p>Objects are named by 32-bit handles that are <em>per-process</em> — the same server is handle 11 in one client and 23 in another; the driver maps each to the real object. There is one well-known handle: <strong>handle 0 is the context manager</strong> (<code>servicemanager</code>). To reach any other service, a client sends a transaction to handle 0 asking for a service by name; servicemanager replies with a <code>flat_binder_object</code>, and the kernel hands the client a fresh handle for it. That is how <code>INotificationManager</code> gets a handle in the first place.</p>
+
+  <h2>7. Threads and buffer ownership</h2>
+  <p>Each process runs a <strong>binder thread pool</strong>. A thread announces itself with <code>BC_ENTER_LOOPER</code>/<code>BC_REGISTER_LOOPER</code> and then blocks in the read side of <code>ioctl</code> waiting for work; when load rises the driver sends <code>BR_SPAWN_LOOPER</code> to ask userspace for another. This is why the sniffer sees <code>BINDER_WRITE_READ</code> on several threads, and why the decoder has to be safe to run on any of them.</p>
+  <p>When a transaction is delivered, the payload lives in the receiver's mapped region and the receiver <em>owns</em> those bytes until it returns them with <code>BC_FREE_BUFFER</code>. That is the one-copy design's bookkeeping.</p>
+
+  <div class="box">
+    <h4>What the sniffer actually touches</h4>
+    <p style="margin:6px 0">Of this whole protocol we read exactly one slice: in a <code>BINDER_WRITE_READ</code>'s <strong>write buffer</strong>, each <code>BC_TRANSACTION</code>, and from its <code>binder_transaction_data</code> the <code>code</code> and <code>data.ptr.buffer</code>/<code>data_size</code>. We never decode <code>BR_</code> returns, replies, offsets, handles, or the refcount commands — they're part of the protocol but not part of the message we're after.</p>
+  </div>
+
+</div>
+</body>
+</html>
