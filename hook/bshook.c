@@ -22,9 +22,18 @@ static int my_ioctl(int fd, unsigned long request, void *arg) {
     return real_ioctl(fd, request, arg);
 }
 
+// Match libbinder by basename, not substring: dl_iterate_phdr can hand back a
+// NULL name for some mappings, and a substring test would also match an
+// unrelated path that merely contains "libbinder.so".
+static int is_libbinder(const char *path) {
+    if (!path) return 0;
+    const char *slash = strrchr(path, '/');
+    return strcmp(slash ? slash + 1 : path, "libbinder.so") == 0;
+}
+
 static int my_callback(struct dl_phdr_info *info, size_t size, void *data) {
     (void)size;  // dl_iterate_phdr contract param; unused here
-    if (strstr(info->dlpi_name, "libbinder.so")) {
+    if (is_libbinder(info->dlpi_name)) {
         __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "found libbinder");
         *(struct dl_phdr_info *)data = *info;
         return 1;
