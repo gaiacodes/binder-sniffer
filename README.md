@@ -14,7 +14,11 @@ tool for targeting other people's apps.
 |-----------|-------|
 | Pure-C Parcel decoder (`decoder/`)        | **Working**, unit-tested on the host against a golden fixture |
 | In-app hook library (`hook/`)             | **Working**, GOT-patches libbinder's `ioctl` and decodes `INotificationManager` traffic live to logcat |
-| ptrace injector to load the hook          | **Next step** — see [Loading the hook](#loading-the-hook) |
+| ptrace injector (`injector/`)             | **Working**, loads the hook into a running app (attach → dlopen → detach) |
+
+The full path is verified end-to-end on a rooted arm64 emulator (API 33):
+`make deploy` → inject into the test app → a live `enqueueNotificationWithTag`
+is intercepted and its `android.title` / `android.text` recovered from the Parcel.
 
 ## Architecture
 
@@ -26,9 +30,9 @@ Capture is done by **loading a hook library into a target app** and patching
 `libbinder`'s `ioctl` call from inside the process:
 
 ```
-   [ptrace injector] ··▶ running app ──dlopen──▶ libbshook.so
-    (next step;                                      │
-     attach→dlopen→detach)                           │ constructor GOT-patches
+   injector ──ptrace──▶ running app ──dlopen──▶ libbshook.so
+   (delivery van;                                   │
+    detaches after)                                 │ constructor GOT-patches
                                                       ▼ libbinder.so's ioctl import
         ┌─────────────────────────────┐       every binder ioctl now passes
         │   decoder/  (pure C core)    │◀───── through our hook, in-process
@@ -68,6 +72,7 @@ other transaction is header-decoded (interface token, code, sizes) and hex-dumpe
 | `hook/bshook.c`                  | Hook lib constructor: GOT-patch libbinder's `ioctl` |
 | `hook/binder_cmd.c`              | BC_* command-stream walker (binder framing only) |
 | `hook/capture.c`                 | Filter to `INotificationManager`, decode, log to logcat |
+| `injector/injector.c`            | ptrace injector: attach, force `dlopen` of the hook, detach |
 | `tests/host_decode.c`            | Host harness (reads a fixture, prints the decode) |
 | `tests/run.sh`                   | Golden-output test runner used by `make test` and CI |
 | `tests/fixtures/`, `tests/expected/` | Raw transaction captures (`*.bin`) and their golden decodes |
@@ -81,8 +86,8 @@ other transaction is header-decoded (interface token, code, sizes) and hex-dumpe
 # Decodes every fixture and diffs it against its golden output.
 make test
 
-# Cross-compile the in-app hook for the emulator (needs the NDK).
-make hook
+# Cross-compile the hook + injector for the emulator (needs the NDK).
+make hook injector
 ```
 
 Override `NDK` / `API` in the `Makefile` for your install. CI runs `make test`
@@ -90,24 +95,26 @@ on every push (see `.github/workflows/ci.yml`).
 
 ## Loading the hook
 
-Getting `libbshook.so` into a running process is the next milestone. The intended
-loader is a small **ptrace injector**: attach to the target PID, force it to call
+The injector loads `libbshook.so` into a running process using ptrace purely as a
+**delivery van**: attach to the target PID, force it to call
 `dlopen("/data/local/tmp/libbshook.so")` via a hijacked register/stack frame, then
-detach — the "delivery van" described above. Once the hook's constructor runs and
-patches the GOT, the injector is no longer involved.
+detach. Once the hook's constructor runs and patches the GOT, the injector is gone
+and the hook runs natively with no tracer attached.
 
-The planned on-device flow, as root:
+On-device flow, as root:
 
 ```sh
-make hook
-adb push build/libbshook.so /data/local/tmp/
+make deploy                                    # push hook + injector to /data/local/tmp
 PID=$(adb shell pidof com.bindersniffer.testapp)
-# adb shell su 0 /data/local/tmp/injector $PID /data/local/tmp/libbshook.so   # (injector: TODO)
-adb logcat -s binder-sniffer       # watch the decode
+adb shell su 0 /data/local/tmp/injector $PID /data/local/tmp/libbshook.so
+adb logcat -s binder-sniffer                   # watch the decode
 ```
 
-Until the injector lands, the decoder and hook are exercised offline via
-`make test` against captured fixtures.
+Expected output once a notification is posted by the hooked process:
+
+```
+binder-sniffer: pkg=com.bindersniffer.testapp title="Binder Sniffer" text="hello from testapp"
+```
 
 ## Environment notes
 
