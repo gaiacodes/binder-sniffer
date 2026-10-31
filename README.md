@@ -103,14 +103,15 @@ The injector loads `libbshook.so` into a running process using ptrace purely as 
 detach. Once the hook's constructor runs and patches the GOT, the injector is gone
 and the hook runs natively with no tracer attached.
 
-On-device flow, as root:
+On-device flow, as root (launch the test app first so it has a PID):
 
 ```sh
-make deploy                                    # push hook + injector to /data/local/tmp
-PID=$(adb shell pidof com.bindersniffer.testapp)
-adb shell su 0 /data/local/tmp/injector $PID /data/local/tmp/libbshook.so
-adb logcat -s binder-sniffer                   # watch the decode
+make inject                          # builds, pushes, and injects into the running test app
+adb logcat -s binder-sniffer         # watch the decode
 ```
+
+`make inject` targets `com.bindersniffer.testapp` by default; override `PKG` (and
+`DEVDIR`, the on-device path) on the `make` command line for a different target.
 
 Expected output once a notification is posted by the hooked process:
 
