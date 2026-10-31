@@ -1,17 +1,14 @@
 #include "capture.h"
+#include "binder_cmd.h"  // bs_walk_bc_stream
 #include "bs_decoder.h"  // bs_decode_enqueue, bs_notif
 
-#include <stdint.h>      // uint32_t, uint8_t, uintptr_t
+#include <stdint.h>      // uint8_t
 #include <string.h>      // strlen
 #include <android/log.h> // __android_log_print
 
 // The interface we care about. Its descriptor sits near the start of the
 // transaction's Parcel, stored as UTF-16LE.
 #define WANT_IFACE "android.app.INotificationManager"
-
-// A binder command code carries its payload size in bits 16..29 (the ioctl
-// _IOC_SIZE field), so we can step over each command without a size table.
-#define BC_PAYLOAD_SIZE(cmd) (((cmd) >> 16) & 0x3FFF)
 
 // True if `buf` contains the ASCII string `s` encoded as UTF-16LE (each char
 // as low byte + 0x00). Used to spot the interface token without a full parse.
@@ -55,26 +52,20 @@ static void log_notification(const struct binder_transaction_data *btd,
         n.have_text  ? n.text  : "(none)");
 }
 
-void bs_capture_bwr(const struct binder_write_read *bwr) {
-    // Walk the command stream. Each command is a u32 code whose payload size is
-    // encoded in the code itself, so we can step from one command to the next
-    // without a per-command size table. For each transaction, decode and log it
-    // only if it targets INotificationManager.
-    uintptr_t base = (uintptr_t)bwr->write_buffer;
-    size_t off = 0;
-    while (off + 4 <= (size_t)bwr->write_size) {
-        uint32_t cmd = *(uint32_t *)(base + off);
-        uint32_t payload = BC_PAYLOAD_SIZE(cmd);
-        off += 4;
-        if (cmd == BC_TRANSACTION || cmd == BC_TRANSACTION_SG) {
-            const struct binder_transaction_data *btd =
-                (const struct binder_transaction_data *)(base + off);
-            const uint8_t *parcel = (const uint8_t *)btd->data.ptr.buffer;
-            size_t len = (size_t)btd->data_size;
-            if (is_notification(parcel, len)) {
-                log_notification(btd, parcel, len);
-            }
-        }
-        off += payload;
+// Per-transaction callback for bs_walk_bc_stream: follow the payload pointer to
+// the Parcel (in our own address space, valid for this ioctl call) and, if it
+// targets INotificationManager, decode and log it.
+static void on_transaction(const struct binder_transaction_data *btd, void *user) {
+    (void)user;
+    const uint8_t *parcel = (const uint8_t *)btd->data.ptr.buffer;
+    size_t len = (size_t)btd->data_size;
+    if (is_notification(parcel, len)) {
+        log_notification(btd, parcel, len);
     }
+}
+
+void bs_capture_bwr(const struct binder_write_read *bwr) {
+    // Transport walking lives in binder_cmd.c; here we only care about what each
+    // transaction means. Decode and log every INotificationManager transaction.
+    bs_walk_bc_stream(bwr, on_transaction, NULL);
 }
