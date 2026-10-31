@@ -108,6 +108,14 @@ static void bshook_init(void) {
     __android_log_print(ANDROID_LOG_INFO, "binder-sniffer", "got_slot page now writable");
     real_ioctl = (ioctl_fn) *got_slot;
     *got_slot = &(my_ioctl);
+
+    // The page only needed to be writable for the single store above. Restore
+    // read-only so we don't leave a writable GOT (a RELRO-defeating primitive)
+    // for the lifetime of the process.
+    if (mprotect((void *)page_start, pagesize, PROT_READ) != 0) {
+        __android_log_print(ANDROID_LOG_WARN, "binder-sniffer",
+            "could not restore GOT page to read-only");
+    }
 }
 
 
