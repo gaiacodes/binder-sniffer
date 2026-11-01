@@ -79,7 +79,6 @@ this one; all other transactions pass through untouched (extending the filter in
 | `tests/run.sh`                   | Golden-output test runner used by `make test` and CI |
 | `tests/fixtures/`, `tests/expected/` | Raw transaction captures (`*.bin`) and their golden decodes |
 | `testapp/`                       | Gradle app that posts a notification to generate real traffic |
-| `docs/`                          | Writeups: binder theory, protocol, AOSP source, project flow |
 
 ## Build & run
 
