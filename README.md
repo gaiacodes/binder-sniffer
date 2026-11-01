@@ -103,21 +103,56 @@ The injector loads `libbshook.so` into a running process using ptrace purely as 
 detach. Once the hook's constructor runs and patches the GOT, the injector is gone
 and the hook runs natively with no tracer attached.
 
-On-device flow, as root (launch the test app first so it has a PID):
+The walkthrough below drives this with a single `make inject` (build → push →
+inject), using the bundled test app as the target.
+
+## Running the live demo from scratch
+
+End-to-end on a rooted arm64 emulator. Steps 0–2 are one-time setup; 3–5 are the
+actual demo. `$SDK` is your Android SDK path (`~/Library/Android/sdk` by default).
 
 ```sh
-make inject                          # builds, pushes, and injects into the running test app
-adb logcat -s binder-sniffer         # watch the decode
+# 0. prerequisites: an arm64 system image + an AVD from it, and the NDK.
+#    (This repo was verified against API 33 google_apis arm64-v8a.)
+$SDK/emulator/emulator -list-avds          # confirm you have an AVD
+
+# 1. boot the emulator and put it in lab state (rooted + permissive SELinux)
+$SDK/emulator/emulator -avd <your-avd> -gpu host &
+adb wait-for-device
+adb root && adb shell setenforce 0
+
+# 2. install the traffic-generating test app
+(cd testapp && ./gradlew :app:installDebug)
+#   or: adb install testapp/app/build/outputs/apk/debug/app-debug.apk
+
+# 3. launch the app so it exists as a process, then start watching logcat
+adb shell am start -n com.bindersniffer.testapp/.MainActivity
+adb logcat -c && adb logcat -s binder-sniffer &
+
+# 4. build + push + inject the hook into the running app
+make inject
+
+# 5. IMPORTANT: re-trigger a notification *after* the hook is installed.
+#    The app posts in onCreate, which already ran at launch (step 3) before the
+#    hook existed — so you must cause a fresh onCreate in the same process, or
+#    logcat will show the GOT-patch lines but no decode. Starting the activity
+#    with NEW_TASK|MULTIPLE_TASK creates a new instance without killing the
+#    process (a restart would spawn a new PID and lose the hook).
+adb shell am start -n com.bindersniffer.testapp/.MainActivity -f 0x18000000
+```
+
+Expected logcat once step 5 fires the notification through the hooked `ioctl`:
+
+```
+binder-sniffer: loaded
+binder-sniffer: found libbinder
+binder-sniffer: ioctl got_slot=0x...  *got_slot=0x...
+binder-sniffer: got_slot page now writable
+binder-sniffer: pkg=com.bindersniffer.testapp title="Binder Sniffer" text="hello from testapp"
 ```
 
 `make inject` targets `com.bindersniffer.testapp` by default; override `PKG` (and
-`DEVDIR`, the on-device path) on the `make` command line for a different target.
-
-Expected output once a notification is posted by the hooked process:
-
-```
-binder-sniffer: pkg=com.bindersniffer.testapp title="Binder Sniffer" text="hello from testapp"
-```
+`DEVDIR`, the on-device path) on the `make` command line to hook a different app.
 
 > **On the load path:** this flow was verified end-to-end loading the `.so` from
 > `/data/local/tmp` on the permissive lab emulator (rooted, `setenforce 0`, API 33
