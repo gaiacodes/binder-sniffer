@@ -57,8 +57,10 @@ Why this capture method:
 
 Full decode target: `android.app.INotificationManager` →
 `enqueueNotificationWithTag` (transaction `code=7` on API 33), decoded down into the
-`Notification`'s `extras` Bundle to recover `android.title` / `android.text`. Every
-other transaction is header-decoded (interface token, code, sizes) and hex-dumped.
+`Notification`'s `extras` Bundle to recover `android.title` / `android.text`. The
+hook sees *every* binder transaction the process makes but currently surfaces only
+this one; all other transactions pass through untouched (extending the filter in
+`hook/capture.c` is how you'd decode more — see [Using it on any app](#using-it-on-any-app)).
 
 ## Layout
 
@@ -160,6 +162,41 @@ binder-sniffer: pkg=com.bindersniffer.testapp title="Binder Sniffer" text="hello
 > returns a live handle. On a device with a stricter app namespace that `dlopen`
 > can return 0 (fail); there the `.so` must live somewhere the target permits —
 > see [Environment notes](#environment-notes) for the `/system/lib64` fallback.
+
+## Using it on any app
+
+`testapp/` is only a convenient, self-contained target — nothing in the hook or
+injector is specific to it. The intercept is generic: it patches `ioctl` in the
+target process's `libbinder`, so it sees **every** binder transaction that process
+makes, regardless of which app it is.
+
+To point it at a real app instead of the test app:
+
+```sh
+# the app must already be running (so it has a PID); PKG is any installed package
+make inject PKG=com.example.someapp
+adb logcat -s binder-sniffer
+```
+
+Then **use the app normally** to make it do the thing you want to observe — for
+the current decoder, post a notification (send yourself a message, trigger an
+alert, etc.). You do *not* need the `am start -f 0x18000000` re-trigger from the
+demo: that step only exists because the test app posts once in `onCreate` at
+launch. A real app posts notifications as you interact with it, and the hook —
+already installed — catches each one live.
+
+What you'll see, and what you won't:
+
+- **Captured today:** that app's `INotificationManager.enqueueNotificationWithTag`
+  calls, decoded to `pkg` / `title` / `text`. Works for any app that posts
+  notifications.
+- **Not yet surfaced:** every other binder call the app makes. The hook receives
+  them but `hook/capture.c` filters to `INotificationManager` and ignores the
+  rest. To decode a different interface/method, widen the filter in `capture.c`
+  and add a decoder for that method's Parcel layout (the `decoder/` core is where
+  that logic goes — `svc_notification.c` is the worked example to copy).
+- **Won't work:** hardened apps that resist ptrace injection or the GOT patch
+  (see [Known limitations](#known-limitations)).
 
 ## Environment notes
 
